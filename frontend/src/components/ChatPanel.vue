@@ -29,7 +29,15 @@ async function send() {
   store.messages.push(aiMsg)
 
   try {
-    const resp = await fetch('http://localhost:8000/sessions/' + store.currentSessionId + '/chat', {
+    // 相对路径 = 同源请求。
+    //   · 开发时：请求发到 5173，由 vite.config.ts 的 server.proxy 转发到 8000
+    //   · 生产时：请求发到同一台服务器，由 Nginx 转发给 FastAPI
+    //
+    // ⚠️ 这里曾经写死 'http://localhost:8000'，是线上「Failed to fetch」的元凶：
+    //    fetch 是原生 API，不走 axios 实例的 baseURL，所以改 api.ts 时漏了这里。
+    //    而本地测试时开发机上真的有 localhost:8000，错误地址恰好是通的，
+    //    完美掩盖了 bug —— 「本地能跑」不能证明「线上能跑」。
+    const resp = await fetch('/sessions/' + store.currentSessionId + '/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

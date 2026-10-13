@@ -88,6 +88,34 @@ jobs:
           ssh-add ~/.ssh/deploy_key
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
 
+      - name: 装 Node
+        uses: actions/setup-node@v4
+        with:
+          # 对齐开发机的 Node 版本（本地 v24.14.0）
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 构建前端
+        # 在 CI 的干净环境里构建，产物直接上传——
+        # 服务器上不装 Node，也不把 node_modules（86MB）同步过去。
+        #
+        # ★ 放在「同步/重启」之前：构建失败整个 job 立刻停住，
+        #   不会出现「后端已更新、前端没跟上」的半新半旧状态。
+        run: |
+          cd frontend
+          # npm ci 严格按 package-lock.json 安装，保证可复现（比 npm install 可靠）
+          npm ci
+          # vue-tsc 类型检查 + vite 打包 → frontend/dist/
+          npm run build
+
+      - name: 同步前端产物到服务器
+        # 只传打包结果（几十 KB），目标目录对应 Nginx 里的 `root /var/www/aboutme;`
+        # --delete：Vite 产物文件名带内容哈希，旧文件不会自动消失，靠它清掉
+        run: |
+          rsync -avz --delete \
+            frontend/dist/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/aboutme/
+
       - name: 同步代码到服务器
         run: |
           # ★ --delete 会删掉服务器上「源目录没有」的文件。
