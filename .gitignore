@@ -8,6 +8,8 @@
 .env
 
 # ---------- 私人工作笔记（不进公开仓库）----------
+# Claude Code 的项目约定（协作方式、个人偏好），与项目本身无关
+CLAUDE.md
 # 「面试采集进度」记录了哪些题答不上来——给 HR 看到是负资产。
 # 且它不是站点运行所需（config 只读 persona_style.md / persona_qa.md），排除零代价。
 data/persona/interview_progress.md
