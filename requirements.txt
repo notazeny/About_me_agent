@@ -10,7 +10,12 @@ uvicorn==0.52.4
 # ---- 数据库（MySQL + ORM）----
 # 注意：这几个是 phase 1 从 SQLite 迁 MySQL 时引入的，
 #      曾经漏写进本文件 → CI 一装就 ImportError（「本机能跑 ≠ 能部署」的典型）
-SQLAlchemy==2.1.4
+#
+# ⚠️ SQLAlchemy 故意不钉 2.1.x：2.1 起要求 Python >= 3.11，
+#    而服务器（Ubuntu 22.04）的 venv 是 Python 3.10，装不上。
+#    这里取 2.0.x —— 它同时支持 3.10 / 3.11，本机和服务器都能用。
+#    （本项目用到的 scalar / scalars / select / declarative_base 在 2.0 全都具备）
+SQLAlchemy>=2.0,<2.1
 PyMySQL==1.2.3
 # MySQL 8 默认认证插件是 caching_sha2_password。
 # 首次连接（服务端还没缓存该用户）时要走 RSA 密钥交换，

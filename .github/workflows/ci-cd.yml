@@ -40,7 +40,12 @@ jobs:
       - name: 装 Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # ★ 必须对齐「服务器上的 Python 版本」，而不是开发机。
+          #   服务器的 venv 是 3.10（Ubuntu 22.04 自带），开发机是 3.11.9。
+          #   曾经写成 3.11，结果 CI 全绿、服务器却装不上 SQLAlchemy 2.1
+          #   （它要求 >=3.11）——CI 给了虚假的安全感。
+          #   教训：CI 是拿来模拟「运行环境」的，模拟错了对象等于没模拟。
+          python-version: "3.10"
           # 缓存 pip 依赖：命中时省 30-60 秒
           cache: pip
 
