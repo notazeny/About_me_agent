@@ -114,6 +114,11 @@ jobs:
             # 改文件 ≠ 改运行中的服务：必须重启才生效
             systemctl restart about_me_agent
             sleep 3
+            # 顺带 reload Nginx：
+            #   · 前端静态产物可能变了，需要它重新读盘
+            #   · reload 是平滑重载，不断现有连接，几乎零耗时
+            # 放在 restart 之后，前后端在同一次运行里切换，把「半新半旧」的窗口压到最小
+            systemctl reload nginx
           REMOTE
 
       - name: 健康检查
