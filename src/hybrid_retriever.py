@@ -1,0 +1,81 @@
+"""混合检索：向量粗召 + BM25 粗召 → 加权 RRF 融合 → top-k。"""
+from . import config
+from .bm25 import BM25, tokenize
+from .embedder import embed_query
+from .vector_store import get_collection, get_all_chunks
+from .reranker import rerank
+
+
+# 模块级缓存：BM25 索引建一次复用，避免每次查询重建
+_chunks = None   # [{id, text, source}]
+_bm25 = None
+
+
+def _load():
+    """惰性加载：首次调用从向量库读全部片段、建 BM25 索引。"""
+    global _chunks, _bm25
+    if _chunks is None:
+        _chunks = get_all_chunks()
+        _bm25 = BM25([tokenize(c["text"]) for c in _chunks])
+    return _chunks, _bm25
+
+
+def vector_search(query, top_n=config.HYBRID_RECALL_N):
+    """向量粗召：返回 [(id, distance)]，distance 越小越相关（已按距离升序）。"""
+    collection = get_collection()
+    query_vec = embed_query(query).tolist()
+    res = collection.query(query_embeddings=[query_vec], n_results=top_n)
+    ids = res.get("ids", [[]])[0]
+    dists = res.get("distances", [[]])[0]
+    return list(zip(ids, dists))
+
+
+def bm25_search(query, top_n=config.HYBRID_RECALL_N):
+    """BM25 粗召：返回 [(id, score)]，score 越大越相关（已按分数降序）。"""
+    chunks, bm25 = _load()
+    scores = bm25.score(tokenize(query))
+    order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    return [(chunks[i]["id"], scores[i]) for i in order[:top_n]]
+
+
+def weighted_rrf(vector_ranked, bm25_ranked, k=config.RRF_K, weights=config.HYBRID_WEIGHTS):
+    """加权 RRF 融合：两个 [(id, ...)] 列表（已按相关度降序）→ [(id, 融合分)] 降序。
+
+    公式：每个列表里，排名 rank（从 0 起）的文档累加 weight / (k + rank + 1)。
+    """
+    # 建 {id: 融合分} 字典，遍历两个列表累加
+    # 提示：enumerate 得到 rank，第一名用 k + 1（即 k + rank + 1）
+    # 最后 sorted(...) 按分数降序返回
+    scores = {}
+    for lst, w in [(vector_ranked, weights[0]), (bm25_ranked, weights[1])]:
+        for rank, (doc_id, _) in enumerate(lst):
+            scores[doc_id] = scores.get(doc_id, 0.0) + w / (k + rank + 1)
+    # 按融合分降序返回列表
+    return sorted(scores.items(), key=lambda item: item[1], reverse=True)
+
+
+def hybrid_retrieve(query, top_k=config.TOP_K):
+    """主入口：向量 + BM25 粗召 → RRF 融合 → 返回 top_k 个 [{text, source, score}]。"""
+    # 调用 vector_search / bm25_search / weighted_rrf 三步
+    vector_results = vector_search(query)
+    bm25_results = bm25_search(query)
+    fused = weighted_rrf(vector_results, bm25_results)
+    # 取 top_k，用 _load() 拿 _chunks 建 {id: chunk}，映射回 text/source
+    chunks, _ = _load()
+    id_to_chunk = {c["id"]: c for c in chunks}
+    top_items = []
+    for doc_id, score in fused[:top_k]:
+        if doc_id in id_to_chunk:
+            chunk = id_to_chunk[doc_id]
+            top_items.append({
+                "text": chunk["text"],
+                "source": chunk["source"],
+                "score": score
+            })
+    return top_items
+
+
+def retrieve_with_rerank(query, top_k=config.TOP_K):
+    """完整链路：粗召(向量+BM25) → RRF 融合 → rerank 精排 → top_k。"""
+    candidates = hybrid_retrieve(query, top_k=config.RERANK_CANDIDATE_N)
+    return rerank(query, candidates, top_k=top_k)

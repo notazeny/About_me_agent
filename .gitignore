@@ -1,0 +1,38 @@
+# ⚠️ 注意：.gitignore 不支持行尾注释！
+# 下面 `路径   # 说明` 这种写法，Git 会把 `# 说明` 也当成匹配规则的一部分，
+# 导致规则**静默失效**（不报错，就是不生效——最难查的一类问题）。
+# 所以：注释一律独占一行。
+
+# ---------- 密钥（绝对不提交）----------
+# 含 DEEPSEEK_API_KEY / MYSQL_PASSWORD / JWT_SECRET_KEY
+.env
+
+# ---------- 私人工作笔记（不进公开仓库）----------
+# 「面试采集进度」记录了哪些题答不上来——给 HR 看到是负资产。
+# 且它不是站点运行所需（config 只读 persona_style.md / persona_qa.md），排除零代价。
+data/persona/interview_progress.md
+
+# ---------- 运行时产物 ----------
+# 向量库，可由 scripts/index_docs.py 重建
+chroma_db/
+# 旧 SQLite 库
+data/sessions.db
+# 含 tests/ 下测试用的临时库
+*.db
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ---------- Python 虚拟环境 ----------
+venv/
+.venv/
+
+# ---------- 前端依赖与构建产物 ----------
+# node_modules 有 86MB，绝不能进仓库；CI 里用 npm ci 重装
+frontend/node_modules/
+frontend/dist/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
