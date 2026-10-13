@@ -1,0 +1,123 @@
+# ============================================================
+# About_Me_Agent 的 CI/CD 流水线
+#
+#   CI（持续集成）：每次 push / PR 自动跑测试
+#   CD（持续部署）：合并到 main 后自动部署到服务器
+#
+# 部署方式：rsync 直推（runner 主动连服务器）
+#   —— 服务器不需要能访问 GitHub，国内网络下最稳。
+#   企业级方案（Docker 镜像 + 镜像仓库）见 learn+/工程化改进待办.md。
+# ============================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # ★ 手动触发：在仓库的 Actions 页面点「Run workflow」才会跑。
+  #   现在 deploy 只认这个事件——push 只跑测试，碰不到线上。
+  #   等前端准备好（改 api.ts 同源 + Nginx 托管静态产物 + 流水线加 build 步骤）后，
+  #   把 deploy job 的 if 改回 push 即可开启全自动部署。
+  workflow_dispatch:
+
+# 同一分支上如果还有没跑完的，取消旧的——省额度，也别让旧结果覆盖新结果
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================
+  # 1) 测试：任何 push 和 PR 都会跑
+  # ==========================================================
+  test:
+    name: 测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # 缓存 pip 依赖：命中时省 30-60 秒
+          cache: pip
+
+      - name: 装依赖
+        # ★ 这一步就是 CI 最核心的价值之一：
+        #   在一台「干净机器」上按 requirements 从零装。
+        #   本机能跑 ≠ 能部署——少写一个包，这里立刻红。
+        run: pip install -r requirements-dev.txt
+
+      - name: 跑测试
+        # conftest.py 会把数据库指向 SQLite，所以这里不需要 MySQL 服务
+        run: python -m pytest tests/ -v
+
+  # ==========================================================
+  # 2) 部署：只在「push 到 main」时跑，PR 不部署
+  # ==========================================================
+  deploy:
+    name: 部署到服务器
+    needs: test                      # 测试没过，绝不部署
+    # ★ 当前是「手动触发」阶段：只有 Actions 页面点 Run workflow 才会部署。
+    #   原因：服务器上跑的还是初版（旧前端不兼容新后端的 JWT 鉴权），
+    #   直接自动部署会把站点打挂。等前端准备好后改成：
+    #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 SSH
+        run: |
+          mkdir -p ~/.ssh
+          # 私钥从 GitHub Secrets 注入，绝不写在仓库里
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 首次连接的指纹：预先写入 known_hosts，避免交互式确认卡住流水线
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # 把 key 交给 ssh-agent，rsync 会自动复用
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/deploy_key
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+
+      - name: 同步代码到服务器
+        run: |
+          # ★ --delete 会删掉服务器上「源目录没有」的文件。
+          #   所以 --exclude 列的不是小事：漏掉 .env，你的 API key
+          #   和数据库密码会被当场删掉（rsync 的经典事故）。
+          #   excluded 的文件既不被传输、也不被删除 —— 天然受保护。
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.env' \
+            --exclude='venv' \
+            --exclude='chroma_db' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.pytest_cache' \
+            --exclude='tests' \
+            --exclude='frontend/node_modules' \
+            --exclude='*.db' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/root/About_Me_Agent/
+
+      - name: 装依赖并重启服务
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
+            set -e
+            cd /root/About_Me_Agent
+            # 依赖有变化时补装（写进 requirements 的包必须在这一步落地，
+            # 否则代码更新了、依赖没更新 → 上线就 ImportError）
+            ./venv/bin/pip install -q -r requirements.txt
+            # 改文件 ≠ 改运行中的服务：必须重启才生效
+            systemctl restart about_me_agent
+            sleep 3
+          REMOTE
+
+      - name: 健康检查
+        run: |
+          # 部署完必须验一下，否则「流水线绿了但站点挂了」这种事会悄悄发生
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "systemctl is-active about_me_agent && curl -sf -o /dev/null http://127.0.0.1/api/links && echo '✅ 健康检查通过'"

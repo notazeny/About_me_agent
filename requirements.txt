@@ -8,10 +8,15 @@ fastapi==0.141.1
 uvicorn==0.52.4
 
 # ---- 数据库（MySQL + ORM）----
-# 注意：这两个是 phase 1 从 SQLite 迁 MySQL 时引入的，
+# 注意：这几个是 phase 1 从 SQLite 迁 MySQL 时引入的，
 #      曾经漏写进本文件 → CI 一装就 ImportError（「本机能跑 ≠ 能部署」的典型）
 SQLAlchemy==2.1.4
 PyMySQL==1.2.3
+# MySQL 8 默认认证插件是 caching_sha2_password。
+# 首次连接（服务端还没缓存该用户）时要走 RSA 密钥交换，
+# PyMySQL 依赖 cryptography 才能完成——缺了会报
+# "cryptography is required for sha256_password or caching_sha2_password"。
+cryptography>=42.0
 
 # ---- 鉴权 ----
 bcrypt==5.0.0
