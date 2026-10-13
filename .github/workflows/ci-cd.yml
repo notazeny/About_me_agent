@@ -118,7 +118,6 @@ jobs:
             ./venv/bin/pip install -q -r requirements.txt
             # 改文件 ≠ 改运行中的服务：必须重启才生效
             systemctl restart about_me_agent
-            sleep 3
             # 顺带 reload Nginx：
             #   · 前端静态产物可能变了，需要它重新读盘
             #   · reload 是平滑重载，不断现有连接，几乎零耗时
@@ -126,8 +125,26 @@ jobs:
             systemctl reload nginx
           REMOTE
 
-      - name: 健康检查
+      - name: 健康检查（轮询，最多等 60 秒）
         run: |
-          # 部署完必须验一下，否则「流水线绿了但站点挂了」这种事会悄悄发生
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "systemctl is-active about_me_agent && curl -sf -o /dev/null http://127.0.0.1/api/links && echo '✅ 健康检查通过'"
+          # 部署完必须验一下，否则「流水线绿了但站点挂了」会悄悄发生。
+          #
+          # ★ 不用 sleep 固定等待：后端启动要加载模型（本机实测约 11 秒），
+          #   写死 sleep 3 会误判失败——机器快一点慢一点结论就不同。
+          #   改成轮询：就绪即返回，不浪费；最多等 60 秒，不误判。
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
+            for i in $(seq 1 30); do
+              if curl -sf -o /dev/null http://127.0.0.1/api/links; then
+                echo "✅ 健康检查通过（第 ${i} 次探测，约 $((i*2)) 秒）"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            # ★ 失败时把日志打出来 —— 这样在 Actions 页面就能看到原因，
+            #   不必再 SSH 上去翻 journalctl。CI 的报错要能自解释。
+            echo "❌ 等待 60 秒后端仍未就绪，以下是最后 40 行日志："
+            systemctl status about_me_agent --no-pager | head -15
+            journalctl -u about_me_agent -n 40 --no-pager
+            exit 1
+          REMOTE
