@@ -130,3 +130,21 @@ def test_users_cannot_see_each_other(client):
     # bob 的会话列表是空的；alice 的还在
     assert client.get("/sessions", headers=hb).json()["total"] == 0
     assert client.get("/sessions", headers=ha).json()["total"] == 1
+
+
+# ---------------- 可观测：请求 ID ----------------
+
+def test_response_carries_request_id(client):
+    """每个响应都带 X-Request-ID —— 排查线上问题时靠它串起整条请求。"""
+    r = client.get("/api/links")
+    assert r.headers.get("X-Request-ID")
+
+
+def test_upstream_request_id_is_reused(client):
+    """上游带了 X-Request-ID 就沿用，不自己生成。
+
+    这样一条请求跨 Nginx / 后端时 ID 连贯（链路追踪的雏形），
+    也能让前端把 ID 显示给用户。
+    """
+    r = client.get("/api/links", headers={"X-Request-ID": "trace-abc-001"})
+    assert r.headers["X-Request-ID"] == "trace-abc-001"

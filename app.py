@@ -18,6 +18,7 @@ from src import auth, config, session_store
 from src.errors import APIError, register_error_handlers
 from src.generator import build_prompt, generate_answer_stream, should_refuse
 from src.hybrid_retriever import retrieve_with_rerank
+from src.observability import AccessLogMiddleware
 from src.vector_store import count_docs
 
 
@@ -38,6 +39,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 可观测：请求 ID + 结构化访问日志。
+# 最后注册 = 最外层 —— 这样它看到的是经过 CORS 等处理后的最终响应。
+app.add_middleware(AccessLogMiddleware)
 
 
 class ChatRequest(BaseModel):
