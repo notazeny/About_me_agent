@@ -17,8 +17,8 @@ on:
     branches: [main]
   # ★ 手动触发：在仓库的 Actions 页面点「Run workflow」才会跑。
   #   现在 deploy 只认这个事件——push 只跑测试，碰不到线上。
-  #   等前端准备好（改 api.ts 同源 + Nginx 托管静态产物 + 流水线加 build 步骤）后，
-  #   把 deploy job 的 if 改回 push 即可开启全自动部署。
+  #   站点已稳定，暂不放开「push 即部署」，免得一次误推打断线上。
+  #   想开启全自动：把 deploy job 的 if 改回 push 即可。
   workflow_dispatch:
 
 # 同一分支上如果还有没跑完的，取消旧的——省额度，也别让旧结果覆盖新结果
@@ -66,8 +66,8 @@ jobs:
     name: 部署到服务器
     needs: test                      # 测试没过，绝不部署
     # ★ 当前是「手动触发」阶段：只有 Actions 页面点 Run workflow 才会部署。
-    #   原因：服务器上跑的还是初版（旧前端不兼容新后端的 JWT 鉴权），
-    #   直接自动部署会把站点打挂。等前端准备好后改成：
+    #   原因：站点已稳定，暂不放开自动部署，避免误推打断线上。
+    #   想开启全自动就改成：
     #     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -122,10 +122,22 @@ jobs:
           #   所以 --exclude 列的不是小事：漏掉 .env，你的 API key
           #   和数据库密码会被当场删掉（rsync 的经典事故）。
           #   excluded 的文件既不被传输、也不被删除 —— 天然受保护。
+          #
+          #   ⚠️ data/semantic_cache.json 也必须排除：
+          #      服务器上那份是运行中自己累积的缓存，被仓库里的覆盖 = 缓存被清空。
+          #
+          #   ⚠️ CLAUDE.md / data/persona/interview_progress.md 也要排除：
+          #      这两个是隐私文件，目前**只靠 .gitignore 一道防线挡着**——
+          #      而 rsync 根本不看 .gitignore！这里补上第二道：
+          #      万一它们将来又出现在仓库里，也同步不到服务器上。
+          #
+          #   注意：注释只能写在这条命令「前面」——反斜杠续行中间插注释会把命令截断。
           rsync -avz --delete \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.env' \
+            --exclude='CLAUDE.md' \
+            --exclude='data/persona/interview_progress.md' \
             --exclude='venv' \
             --exclude='chroma_db' \
             --exclude='__pycache__' \
@@ -134,6 +146,7 @@ jobs:
             --exclude='tests' \
             --exclude='frontend/node_modules' \
             --exclude='*.db' \
+            --exclude='data/semantic_cache.json' \
             ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/root/About_Me_Agent/
 
       - name: 装依赖并重启服务

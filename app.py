@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src import auth, config, session_store
+from src import auth, config, semantic_cache, session_store
 from src.errors import APIError, register_error_handlers
 from src.generator import build_prompt, generate_answer_stream, should_refuse
 from src.hybrid_retriever import retrieve_with_rerank
@@ -150,15 +150,17 @@ def chat(session_id: str, body: ChatRequest, request: Request, user: dict = Depe
             yield sse({"sources": [], "done": True})
             return
 
-        # ---- 第 1 段：检索（embedding + BM25 + RRF + rerank）----
+        # ---- 第 1 段：检索（语义缓存 → embedding + BM25 + RRF + rerank）----
         t = time.perf_counter()
         chunks = retrieve_with_rerank(question)
         retrieve_ms = elapsed_ms(t)
+        cache = semantic_cache.last_lookup()   # 这次检索是走了缓存，还是真算了
 
         if should_refuse(chunks):
             answer = "这个问题我还没准备好，建议当面和 sazeny 聊。"
             log_event(request, "chat.done", reason="诚实拒答",
-                      retrieve_ms=retrieve_ms, total_ms=elapsed_ms(t_start))
+                      retrieve_ms=retrieve_ms, cache_hit=cache.get("hit"),
+                      total_ms=elapsed_ms(t_start))
             yield sse({"delta": answer})
             session_store.add_message(session_id, "assistant", answer, sources=[])
             yield sse({"sources": [], "done": True})
@@ -181,9 +183,11 @@ def chat(session_id: str, body: ChatRequest, request: Request, user: dict = Depe
         session_store.add_message(session_id, "assistant", answer, sources=sources)
 
         log_event(request, "chat.stages",
-                  retrieve_ms=retrieve_ms,        # 检索总共
+                  retrieve_ms=retrieve_ms,        # 检索总共（命中缓存时从 ~21.7s 掉到 ~0.05s）
                   first_token_ms=first_token_ms,  # 生成首字
                   gen_ms=gen_ms,                  # 生成总共
+                  cache_hit=cache.get("hit"),     # 这次检索是否走了缓存
+                  cache_score=round(cache.get("score", 0.0), 4),
                   total_ms=elapsed_ms(t_start))
         yield sse({"sources": sources, "done": True})
 

@@ -1,5 +1,5 @@
 """混合检索：向量粗召 + BM25 粗召 → 加权 RRF 融合 → top-k。"""
-from . import config
+from . import config, semantic_cache
 from .bm25 import BM25, tokenize
 from .embedder import embed_query
 from .vector_store import get_collection, get_all_chunks
@@ -76,6 +76,16 @@ def hybrid_retrieve(query, top_k=config.TOP_K):
 
 
 def retrieve_with_rerank(query, top_k=config.TOP_K):
-    """完整链路：粗召(向量+BM25) → RRF 融合 → rerank 精排 → top_k。"""
+    """完整链路：**语义缓存** → 粗召(向量+BM25) → RRF 融合 → rerank 精排 → top_k。
+
+    缓存只包在**检索**这一层：命中就跳过粗召和 rerank（端到端 24s → 约 1.2s）。
+    注意**不跳过生成**——答案不缓存，原因见 src/semantic_cache.py 顶部。
+    """
+    cached, _score = semantic_cache.lookup(query)
+    if cached is not None:
+        return cached                       # 命中：19.6 秒的 rerank 省掉
+
     candidates = hybrid_retrieve(query, top_k=config.RERANK_CANDIDATE_N)
-    return rerank(query, candidates, top_k=top_k)
+    results = rerank(query, candidates, top_k=top_k)
+    semantic_cache.store(query, results)    # 首次算完就记住，下次直接给
+    return results

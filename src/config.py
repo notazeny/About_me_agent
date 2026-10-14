@@ -65,6 +65,18 @@ RERANK_MODEL = "BAAI/bge-reranker-base"    # 交叉编码器 rerank 模型（中
 RERANK_CANDIDATE_N = 10                    # 粗召融合后取多少条候选交给 rerank 精排
 RERANK_CONFIDENCE_THRESHOLD = -100.0       # rerank 是 logits（有正有负），0.0 会误拒相关片段；设很低，MVP 只靠「检索为空」+ prompt 兜底诚实拒答
 
+# ---- 语义缓存 ----
+# 把「问题 → 检索片段」缓存起来，命中就跳过 rerank（端到端 24s → 约 1.2s）。
+# 为什么缓存的是检索而不是最终答案，见 src/semantic_cache.py 顶部注释；
+# 取舍与验收指标见 learn+/性能优化待办.md。
+SEMANTIC_CACHE_ENABLED = os.getenv("SEMANTIC_CACHE_ENABLED", "1") != "0"
+# 相似度阈值：调高 = 更保守（少误命中、少命中）；调低 = 更激进。
+# 用 scripts/cache_hitrate.py 扫出来再定，别拍脑袋。
+SEMANTIC_CACHE_THRESHOLD = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.95"))
+# 落盘位置。标定脚本会把它指到临时文件，避免污染线上缓存。
+SEMANTIC_CACHE_PATH = Path(os.getenv("SEMANTIC_CACHE_PATH") or (BASE_DIR / "data" / "semantic_cache.json"))
+
+
 # ---- 多轮对话 ----
 MAX_HISTORY_TURNS = 5   # 生成回答时，带入最近几轮对话作为上下文
 

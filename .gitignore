@@ -19,6 +19,9 @@ data/persona/interview_progress.md
 chroma_db/
 # 旧 SQLite 库
 data/sessions.db
+# 语义缓存的落盘文件：运行时产物，随提问不断变化。
+# 不进仓库；部署时也不要覆盖——服务器上那份是它自己攒的（见 ci-cd.yml 的 --exclude）。
+data/semantic_cache.json
 # 含 tests/ 下测试用的临时库
 *.db
 __pycache__/
