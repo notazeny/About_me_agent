@@ -55,6 +55,22 @@ if not logger.handlers:
     logger.propagate = False        # 不往 root 传，避免重复输出
 
 
+def elapsed_ms(since: float) -> float:
+    """从 `perf_counter()` 记下的起点算到现在，返回**毫秒**（保留 1 位小数）。
+
+    为什么封装成函数、而不是到处写 `round((time.perf_counter()-t)*1000, 1)`：
+
+      · `perf_counter()` 返回的是**秒**，×1000 才是毫秒 —— 这是单位换算，
+        散落在各处会让人看不懂「1000 是哪来的」，改精度还得改 N 处、必漏一处
+      · 有名字（elapsed_ms）就自带说明，读代码不用反推
+      · 换项目直接 import 就能复用
+
+    用 perf_counter 而不是 time.time()：前者是**单调时钟**，
+    不受系统时间被 NTP 校准/人为调整的影响，测耗时才可靠。
+    """
+    return round((time.perf_counter() - since) * 1000, 1)
+
+
 def _client_ip(request) -> str:
     """取真实客户端 IP。
 
@@ -65,6 +81,30 @@ def _client_ip(request) -> str:
         request.headers.get("X-Real-IP")
         or (request.client.host if request.client else "-")
     )
+
+
+def log_event(request, event: str, **fields) -> None:
+    """记一条「业务事件」日志，自动带上同一个 request_id。
+
+    用法（在端点里，把慢动作拆成能定位的小数字）：
+
+        t = time.perf_counter()
+        chunks = retrieve(question)
+        log_event(request, "chat.stages", retrieve_ms=round((time.perf_counter()-t)*1000, 1))
+
+    为什么带 request_id：这样**请求级日志**（middleware 记的访问日志）和
+    **阶段级日志**（这里记的业务事件）能用同一个 ID 串起来——
+    一条命令捞出一次请求的全部痕迹：
+
+        journalctl -u <服务> | grep <request_id>
+
+    这是从「一个大数字」走到「可归因的小数字」的关键一步。
+    """
+    request_id = getattr(getattr(request, "state", None), "request_id", "-")
+    logger.info(json.dumps(
+        {"request_id": request_id, "event": event, **fields},
+        ensure_ascii=False,
+    ))
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
@@ -91,7 +131,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 "method": request.method,
                 "path": request.url.path,
                 "status": 500,
-                "elapsed_ms": round((time.perf_counter() - start) * 1000, 1),
+                "elapsed_ms": elapsed_ms(start),
                 "client": _client_ip(request),
             }, ensure_ascii=False))
             raise
@@ -122,7 +162,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             "method": request.method,
             "path": request.url.path,
             "status": status,
-            "elapsed_ms": round((time.perf_counter() - start) * 1000, 1),
+            "elapsed_ms": elapsed_ms(start),
             "client": _client_ip(request),
         }
 
@@ -132,7 +172,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         try:
             async for chunk in body_iterator:
                 if ttfb_ms is None and chunk:
-                    ttfb_ms = round((time.perf_counter() - start) * 1000, 1)
+                    ttfb_ms = elapsed_ms(start)
                 yield chunk
         finally:
             # finally 保证「客户端中途断开」也会记上（此时会抛 GeneratorExit）

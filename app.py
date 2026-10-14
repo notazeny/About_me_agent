@@ -18,7 +18,7 @@ from src import auth, config, session_store
 from src.errors import APIError, register_error_handlers
 from src.generator import build_prompt, generate_answer_stream, should_refuse
 from src.hybrid_retriever import retrieve_with_rerank
-from src.observability import AccessLogMiddleware
+from src.observability import AccessLogMiddleware, elapsed_ms, log_event
 from src.vector_store import count_docs
 
 
@@ -135,29 +135,56 @@ def chat(session_id: str, body: ChatRequest, request: Request, user: dict = Depe
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     def generate():
+        # ---- 分段计时 ----
+        # 访问日志只告诉你「这次请求总共 32 秒」，没说慢在哪一段。
+        # 这里把 chat 路径拆成「检索 / 生成首字 / 生成总共」，
+        # 用同一个 request_id 记一条事件日志——两者一 grep 就串起来了。
+        # 这是从「一个大数字」到「可归因的小数字」的关键一步。
+        t_start = time.perf_counter()
+
         if count_docs() == 0:
             answer = "语料还没索引，请先运行 scripts/index_docs.py 建库。"
+            log_event(request, "chat.done", reason="未建索引", total_ms=elapsed_ms(t_start))
             yield sse({"delta": answer})
             session_store.add_message(session_id, "assistant", answer, sources=[])
             yield sse({"sources": [], "done": True})
             return
 
+        # ---- 第 1 段：检索（embedding + BM25 + RRF + rerank）----
+        t = time.perf_counter()
         chunks = retrieve_with_rerank(question)
+        retrieve_ms = elapsed_ms(t)
+
         if should_refuse(chunks):
             answer = "这个问题我还没准备好，建议当面和 sazeny 聊。"
+            log_event(request, "chat.done", reason="诚实拒答",
+                      retrieve_ms=retrieve_ms, total_ms=elapsed_ms(t_start))
             yield sse({"delta": answer})
             session_store.add_message(session_id, "assistant", answer, sources=[])
             yield sse({"sources": [], "done": True})
             return
 
+        # ---- 第 2 段：生成（首字耗时 = 用户真正感受到的等待）----
         prompt = build_prompt(question, chunks, history=history)
+        t = time.perf_counter()
+        first_token_ms = None
         parts = []
         for piece in generate_answer_stream(prompt):
+            if first_token_ms is None:
+                first_token_ms = elapsed_ms(t)     # 用户等多久才看到第一个字
             parts.append(piece)
             yield sse({"delta": piece})
+        gen_ms = elapsed_ms(t)
+
         answer = "".join(parts)
         sources = [{"source": c["source"], "text": c["text"]} for c in chunks]
         session_store.add_message(session_id, "assistant", answer, sources=sources)
+
+        log_event(request, "chat.stages",
+                  retrieve_ms=retrieve_ms,        # 检索总共
+                  first_token_ms=first_token_ms,  # 生成首字
+                  gen_ms=gen_ms,                  # 生成总共
+                  total_ms=elapsed_ms(t_start))
         yield sse({"sources": sources, "done": True})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
