@@ -148,3 +148,19 @@ def test_upstream_request_id_is_reused(client):
     """
     r = client.get("/api/links", headers={"X-Request-ID": "trace-abc-001"})
     assert r.headers["X-Request-ID"] == "trace-abc-001"
+
+
+# ---------------- 健康检查 ----------------
+
+def test_healthz_reports_dependency_checks(client):
+    """/healthz 要逐项报告依赖状态，而不是笼统地说「我还活着」。
+
+    测试环境用 SQLite（一定通），向量库可能不存在 —— 所以整体状态
+    可能是 200 也可能是 503，但 **db 必须为 True**、结构必须齐全。
+    """
+    r = client.get("/healthz")
+    body = r.json()
+    assert r.status_code in (200, 503)
+    assert body["checks"]["db"] is True
+    assert "vector_store" in body["checks"]
+    assert body["status"] in ("ok", "unhealthy")

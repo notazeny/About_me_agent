@@ -8,7 +8,7 @@ import threading
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -188,6 +188,31 @@ def chat(session_id: str, body: ChatRequest, request: Request, user: dict = Depe
         yield sse({"sources": sources, "done": True})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ---------- 健康检查 ----------
+@app.get("/healthz", tags=["nav"])
+def healthz(response: Response):
+    """逐项探测依赖，任何一项不通就返回 503。
+
+    为什么不复用 /api/links：那个只能证明「进程还活着」。
+    有一种失败它抓不到——服务起来了、/api/links 返回 200、流水线全绿，
+    但用户一提问就报错（因为数据库连不上）。**这种"绿的但坏的"最危险。**
+
+    健康检查的意义不是确认「服务在跑」，而是确认「服务真的能用」。
+    """
+    checks = {"db": session_store.ping()}
+
+    try:
+        # 向量库非空才算健康：空的库虽然能启动，但一问就是"语料还没索引"
+        checks["vector_store"] = count_docs() > 0
+    except Exception:
+        checks["vector_store"] = False
+
+    healthy = all(checks.values())
+    if not healthy:
+        response.status_code = 503      # 让负载均衡 / 流水线据此判定失败
+    return {"status": "ok" if healthy else "unhealthy", "checks": checks}
 
 
 # ---------- 导航信息 ----------

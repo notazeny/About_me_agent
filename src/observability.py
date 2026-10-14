@@ -55,6 +55,10 @@ if not logger.handlers:
     logger.propagate = False        # 不往 root 传，避免重复输出
 
 
+# 不打访问日志的路径：高频探测，记下来只会变成噪音
+SKIP_LOG_PATHS = {"/healthz"}
+
+
 def elapsed_ms(since: float) -> float:
     """从 `perf_counter()` 记下的起点算到现在，返回**毫秒**（保留 1 位小数）。
 
@@ -111,6 +115,12 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
     """给每个请求分配 ID，并记一条结构化（JSON）访问日志。"""
 
     async def dispatch(self, request, call_next):
+        # 高频探测（健康检查）直接放行、不记日志。
+        # 监控/负载均衡可能每几秒打一次，记下来会把日志刷满，
+        # 真正有价值的业务请求反而被淹没——「日志噪音」也是可观测的敌人。
+        if request.url.path in SKIP_LOG_PATHS:
+            return await call_next(request)
+
         # 优先沿用上游传进来的 ID：Nginx / 前端带了 X-Request-ID 就用它——
         # 这样一条请求跨多个服务时 ID 连贯（链路追踪的雏形）。没有就自己生成。
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]

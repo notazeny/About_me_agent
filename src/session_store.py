@@ -7,7 +7,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func, select
+from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func, select, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from . import config
@@ -90,6 +90,20 @@ def _session():
 def init_db() -> None:
     """建表（幂等）。表已由 schema.sql 建好，这里兜底 + 顺带验证连接可用。"""
     Base.metadata.create_all(engine)
+
+
+def ping() -> bool:
+    """探测数据库连通性：能跑通一条最简 SQL 就算通。
+
+    给 /healthz 用。不抛异常、只返回布尔——健康检查不该因为
+    「探查本身出错」而整个炸掉，它需要的是「能/不能」这个结论。
+    """
+    try:
+        with _session() as s:
+            s.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
 def create_session(user_id: int, title: str = "") -> dict:
