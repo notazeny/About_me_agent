@@ -1,9 +1,11 @@
 """混合检索：向量粗召 + BM25 粗召 → 加权 RRF 融合 → top-k。"""
+import time
+
 from . import config, semantic_cache
 from .bm25 import BM25, tokenize
-from .embedder import embed_query
-from .vector_store import get_collection, get_all_chunks
-from .reranker import rerank
+from .embedder import embed_query, get_model
+from .vector_store import count_docs, get_all_chunks, get_collection
+from .reranker import get_reranker, rerank
 
 
 # 模块级缓存：BM25 索引建一次复用，避免每次查询重建
@@ -89,3 +91,66 @@ def retrieve_with_rerank(query, top_k=config.TOP_K):
     results = rerank(query, candidates, top_k=top_k)
     semantic_cache.store(query, results)    # 首次算完就记住，下次直接给
     return results
+
+
+def warm_up():
+    """预热：把检索链路上「第一次调用才加载」的重家伙全部提前拉起来。
+
+    **不预热会怎样**：这笔开销会落在**重启后的第一个访客**头上——
+    线上实测约 13 秒（分词器 + bge-small 向量模型 + bge-reranker-base 交叉编码器
+    + BM25 建索引），叠加正常的一次 rerank（约 20 秒），第一个人要盯着空白等 **35 秒**。
+    后面的人却只要 1-2 秒。**凭什么让第一个访客买单？**
+
+    **代价（有意的）**：进程要等它就绪才开始接受请求，即**启动变慢约 25 秒**。
+    这个取舍是对的——「启动完成」就该等于「真的能用」，
+    否则健康检查会放行一个「起来了、但一问就卡 35 秒」的服务，
+    而那正是「绿的但坏的」中最难查的一种。
+
+    返回各步骤耗时，供启动日志记录（部署后 grep `startup.warmup` 就能看到）。
+    """
+    timings = {}
+    t0 = time.perf_counter()
+
+    if not count_docs():
+        timings["note"] = "向量库为空，跳过预热"
+        timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        return timings
+
+    for name, load in (
+        ("bm25", _load),             # 从向量库读全部片段 + 建 BM25 索引
+        ("embedder", get_model),     # bge-small 向量模型
+        ("reranker", get_reranker),  # bge-reranker-base 交叉编码器（最重的那个）
+    ):
+        t = time.perf_counter()
+        try:
+            load()
+        except Exception as exc:
+            # 预热失败不该让服务起不来——那会变成 crash loop（Restart=always），
+            # 比「起来了但慢」更糟。记下来，让它显式可见。
+            timings[name] = f"失败: {exc}"
+            continue
+        timings[f"{name}_ms"] = round((time.perf_counter() - t) * 1000, 1)
+
+    timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    return timings
+
+
+def warm_state() -> dict:
+    """报告预热到底成没成——模型/索引加载了没有。
+
+    给 `/healthz` 用。理由和那个接口的其它检查一样：
+    **「服务起来了」不等于「服务能用」**。预热失败时进程照样活着、
+    数据库和向量库也照样能连，但每一问都会卡或报错——
+    这正是健康检查最该抓住的「绿的但坏的」。
+
+    注意：这里的写法是「取模块属性」而不是 `from .embedder import _model`——
+    后者拿到的是**导入那一刻的副本**，之后模块里把它赋值成模型对象，
+    这里也不会跟着变，会永远读到 None。
+    """
+    from . import embedder, reranker
+
+    return {
+        "bm25": _chunks is not None,
+        "embedder": embedder._model is not None,
+        "reranker": reranker._reranker is not None,
+    }

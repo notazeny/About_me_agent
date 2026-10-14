@@ -14,6 +14,9 @@ _TEST_DB = Path(__file__).resolve().parent / "test_aboutme.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"   # 走 SQLite，不连 MySQL
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-not-for-production"
 os.environ["DEEPSEEK_API_KEY"] = "test-dummy-key"                 # 测试不真调 LLM
+# client 夹具不用 `with TestClient(app)`，lifespan 本来就不跑；这里是双保险——
+# 万一以后有人改成 with 写法，也不会让测试去加载 bge/reranker 模型。
+os.environ["WARMUP_ON_STARTUP"] = "0"
 
 # ---- 2) 让 `import app` 能找到项目根下的 app.py ----
 # pytest 从 tests/ 收集用例时，sys.path 里不一定有项目根目录。

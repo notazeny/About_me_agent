@@ -1,0 +1,49 @@
+# ============================================================
+# About_Me_Agent 的 systemd 服务单元
+# 放置位置（服务器）：/etc/systemd/system/about_me_agent.service
+#
+# 启用：
+#   systemctl daemon-reload
+#   systemctl enable --now about_me_agent
+# 改完这个文件必须 daemon-reload，否则 systemd 用的还是旧定义。
+# ============================================================
+
+[Unit]
+Description=About Me Agent (sazeny AI 分身)
+After=network.target
+
+
+[Service]
+WorkingDirectory=/root/About_Me_Agent
+
+# ★ 只监听 127.0.0.1：外部一律走 Nginx（见 deploy/nginx/aboutme.conf）。
+#   这样 uvicorn 不直接暴露在公网，Nginx 是唯一入口。
+ExecStart=/root/About_Me_Agent/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000
+
+# ★ 关掉 HuggingFace 的「联网检查」。
+#   加载模型时 sentence-transformers / FlagEmbedding 默认会去 HuggingFace
+#   做一次元数据检查，本地实测：联网 150.3 秒 vs 离线 0.29 秒（差 500 倍，
+#   全是网络重试）。服务器走 hf-mirror 也要十几秒——这正是
+#   「重启后第一个访客多等 13 秒」的真正原因。
+#   模型已下载好，所以生产环境直接离线。
+Environment=HF_HUB_OFFLINE=1
+
+# 镜像站：万一需要重新下载模型时用（离线模式下不生效，留着做后手）
+Environment=HF_ENDPOINT=https://hf-mirror.com
+
+# 挂了自动拉起（崩了别等人发现）
+Restart=always
+RestartSec=3
+
+
+[Install]
+WantedBy=multi-user.target
+
+
+# ============================================================
+# 已知隐患（面试可讲，见 learn+/工程化改进待办.md 「四、安全」）
+#   · 现在是**以 root 跑**的——RAG 链路任何文件读/代码执行被攻破即直接拿 root。
+#     企业级做法：建专用用户，这里加一行 `User=www`（改动最小、收益最大）。
+#   · 密钥放在 /root/About_Me_Agent/.env 明文。企业级做法：进 GitHub Secrets /
+#     密钥服务，部署时注入，磁盘上不留文件。
+# ============================================================

@@ -170,17 +170,23 @@ jobs:
         run: |
           # 部署完必须验一下，否则「流水线绿了但站点挂了」会悄悄发生。
           #
-          # ★ 不用 sleep 固定等待：后端启动要加载模型（本机实测约 11 秒），
+          # ★ 不用 sleep 固定等待：后端启动要加载模型，
           #   写死 sleep 3 会误判失败——机器快一点慢一点结论就不同。
           #   改成轮询：就绪即返回，不浪费；最多等 60 秒，不误判。
+          #
+          # ★ 现在启动更慢了：lifespan 里加了 warm_up()（预热模型 + 建索引），
+          #   进程要等预热完才开始接受请求。所以给 curl 加 --max-time——
+          #   否则启动期间那一次 curl 会一直挂着，把探测的节奏打乱。
+          #   预算放宽到约 5 分钟：正常运行预热只要几秒，
+          #   但万一模型缓存丢了（要重新下载）或网络慢，别让部署误判失败。
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
-            for i in $(seq 1 30); do
+            for i in $(seq 1 60); do
               # 打 /healthz 而不是 /api/links：前者会逐项探测依赖
               # （数据库能不能连、向量库有没有数据），任何一项不通就返回 503。
               # /api/links 只证明「进程活着」，抓不到「起来了但数据库连不上」这种
               # 「绿的但坏的」情况。curl -f 遇到 503 会返回非零 → 继续重试。
-              if curl -sf -o /dev/null http://127.0.0.1/healthz; then
-                echo "✅ 健康检查通过（第 ${i} 次探测，约 $((i*2)) 秒）"
+              if curl -sf --max-time 5 -o /dev/null http://127.0.0.1/healthz; then
+                echo "✅ 健康检查通过（第 ${i} 次探测）"
                 curl -s http://127.0.0.1/healthz
                 exit 0
               fi

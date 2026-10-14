@@ -3,6 +3,7 @@
 运行：uvicorn app:app --reload
 """
 import json
+import logging
 import time
 import threading
 from collections import defaultdict, deque
@@ -17,14 +18,30 @@ from pydantic import BaseModel
 from src import auth, config, semantic_cache, session_store
 from src.errors import APIError, register_error_handlers
 from src.generator import build_prompt, generate_answer_stream, should_refuse
-from src.hybrid_retriever import retrieve_with_rerank
+from src.hybrid_retriever import retrieve_with_rerank, warm_state, warm_up
 from src.observability import AccessLogMiddleware, elapsed_ms, log_event
 from src.vector_store import count_docs
+
+# 故意复用 observability 的 logger：logging 按名字全局唯一，同名即同对象，
+# 于是这里打出的启动日志会直接用它的 JSON handler，不必再配一遍。
+logger = logging.getLogger("aboutme.access")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     session_store.init_db()   # 建表（幂等）
+
+    # 预热检索链路：把模型和索引提前加载好。
+    # 不做这一步，这 ~13 秒就落在「重启后的第一个访客」头上（叠加 rerank 共约 35 秒）。
+    # 代价是启动变慢——这是**有意**的，理由见 src/hybrid_retriever.py 的 warm_up()。
+    if config.WARMUP_ON_STARTUP:
+        t = time.perf_counter()
+        timings = warm_up()
+        logger.info(json.dumps(
+            {"event": "startup.warmup", "elapsed_ms": elapsed_ms(t), **timings},
+            ensure_ascii=False,
+        ))
+
     yield
 
 
@@ -212,6 +229,13 @@ def healthz(response: Response):
         checks["vector_store"] = count_docs() > 0
     except Exception:
         checks["vector_store"] = False
+
+    # 模型/索引真的加载好了吗？——同理，「起来了」不等于「能回答」。
+    # 预热失败时进程照样活着、上面两项也照样绿，但每一问都会卡或报错，
+    # 正是「绿的但坏的」。
+    # 只在开了预热时才检查：没开预热时模型是懒加载的，这里必然是 False，会误报 503。
+    if config.WARMUP_ON_STARTUP:
+        checks.update(warm_state())
 
     healthy = all(checks.values())
     if not healthy:

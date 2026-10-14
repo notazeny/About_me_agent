@@ -44,6 +44,21 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")   # 签名密钥，放 .env（�
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24                              # token 有效期（小时）
 
+# ---- 模型加载 / 离线开关 ----
+# ⚠️ 加载模型时，sentence-transformers / FlagEmbedding 会**联网**去 HuggingFace
+#    做一次元数据检查。本地实测差距巨大：
+#        联网 150.3 秒  vs  离线 0.29 秒   ← 差 500 倍，全是网络重试
+#    reranker 同理（3.9 秒 → 2.2 秒）。
+#    服务器走 hf-mirror 也要十几秒——这正是「重启后第一个访客多等 13 秒」的真正原因。
+#
+# 所以：**模型下载好之后，生产环境应当设 HF_HUB_OFFLINE=1**。
+# 权威设置点是**环境变量**，不是这里——因为 huggingface_hub 在
+# **自己 import 的那一刻** 就把这个开关读死了，写进 Python 代码太晚。
+#   生产：systemd unit 里 `Environment=HF_HUB_OFFLINE=1`
+#   本地：`export HF_HUB_OFFLINE=1`
+# 默认不设 = 联网，这样「首次克隆仓库」时还能正常下载模型。
+
+
 # ---- 向量化模型 ----
 # BGE 中文小模型：约 100MB、下载快、中文检索效果好；query 需叠前缀（非对称模型）。
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
@@ -75,6 +90,13 @@ SEMANTIC_CACHE_ENABLED = os.getenv("SEMANTIC_CACHE_ENABLED", "1") != "0"
 SEMANTIC_CACHE_THRESHOLD = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.95"))
 # 落盘位置。标定脚本会把它指到临时文件，避免污染线上缓存。
 SEMANTIC_CACHE_PATH = Path(os.getenv("SEMANTIC_CACHE_PATH") or (BASE_DIR / "data" / "semantic_cache.json"))
+
+
+# ---- 启动预热 ----
+# 启动时把检索链路的模型/索引提前加载好，免得这笔开销落在
+# 「重启后的第一个访客」头上（线上实测约 13 秒，叠加 rerank 共约 35 秒）。
+# 代价是启动变慢——本地 `--reload` 开发时每次改文件都要等，可设 WARMUP_ON_STARTUP=0 关掉。
+WARMUP_ON_STARTUP = os.getenv("WARMUP_ON_STARTUP", "1") != "0"
 
 
 # ---- 多轮对话 ----
