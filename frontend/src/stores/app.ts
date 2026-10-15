@@ -22,6 +22,9 @@ export const useAppStore = defineStore('app', () => {
   const sessions = ref<Session[]>([])
   const messages = ref<Message[]>([])
   const showPortfolio = ref(false)
+  // 全局提示（登录过期 / 限流 / 服务异常），由 api.ts 的响应拦截器经事件送来。
+  // 放在 store 里而不是某个组件里：它能从任何页面触发，也该在任何页面被看见。
+  const authNotice = ref('')
 
   // ---- 动作 ----
   function setToken(t: string) {
@@ -48,5 +51,8 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  return { token, currentSessionId, sessions, messages, showPortfolio, setToken, logout, loadSessions }
+  return {
+    token, currentSessionId, sessions, messages, showPortfolio, authNotice,
+    setToken, logout, loadSessions,
+  }
 })

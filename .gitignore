@@ -41,3 +41,8 @@ frontend/dist/
 .vscode/
 .idea/
 .DS_Store
+
+# ---------- AI 工具配置（不是项目代码）----------
+# impeccable 设计 skill 的 markdown（46 个文件 / 541 KB 第三方内容）。
+# 和 .vscode/ 同理：这是工具配置，不是这个项目的一部分，不该进仓库。
+.claude/

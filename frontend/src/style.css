@@ -1,10 +1,245 @@
-/* 全局基础样式：清掉 Vite 模板自带的 demo 样式（它会把 #app 居中 + 限宽 1126px） */
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* ============================================================
+   About_Me_Agent · 设计 token 与全局基线
+   ============================================================
+
+   世界：阅卷台。
+
+   这里实际发生的，是「一场关于一个人职业履历的对话」。
+   所以：画布是纸、文字是墨、答案是要读的正文、来源是要核的证据。
+   界面是框，内容才是工。
+
+   ── 两个刻意的决定，写在这里免得后来人以为是偷懒 ──
+
+   1) 强调色不用 #4f46e5（Tailwind indigo-600）。
+      那是"AI 生成的界面"的默认色，一眼就能认出来。
+      改取深青（petrol）：接近墨、远离紫，中文界面下也稳得住。
+
+   2) 不下载自托管字体。
+      本项目以中文为主，一套中文字体动辄 5-10 MB——
+      为了"有个性"让 HR 多等几秒，是错的取舍。
+      所以字的性格由**排版处理**给出：字阶、字重、字距、留白、对比，
+      而不是靠换一套字。英文展示体另说（见文末"以后想更进一步"）。
+
+   ── token 以「角色」命名，不以颜色命名 ──
+   改主题时改的是角色映射，不是去十几个文件里找十六进制替换。
+
+   对比度全部按 WCAG AA 算过，注释里标了实测值。
+   ============================================================ */
+
+:root {
+  /* ---------- 纸与墨 ---------- */
+  --canvas:       #fbfaf8;   /* 画布：暖白。不是纯白 #fff，也不是冷灰 */
+  --surface:      #ffffff;   /* 抬起的面：气泡、弹窗 */
+  --surface-sunk: #f2efe9;   /* 下沉的面：侧栏、引用、输入框 */
+
+  --ink:       #1a1a18;      /* 主体墨色 —— 16.6:1 */
+  --ink-muted: #57534e;      /* 次要文字 —— 7.3:1 */
+  --ink-faint: #6f6a65;      /* 元信息 / 占位符 —— 5.1:1（占位符也要过 4.5:1）*/
+
+  --rule:        #e4e0d9;    /* 发型线：大多数分隔用它 */
+  --rule-strong: #cbc5bc;    /* 需要明确边界时 */
+
+  /* ---------- 强调色：深青 ---------- */
+  --accent:      #0f5f63;    /* 动作、选中 —— 7.1:1；白字压它 7.4:1 */
+  --accent-deep: #0b4548;    /* hover / active */
+  --accent-wash: #e7f1f0;    /* 淡底：选中态、证据标记 */
+  --accent-edge: #bad5d4;    /* 淡底上的边界 */
+
+  /* ---------- 语义色 ---------- */
+  --danger:      #9b2c2c;    /* 6.7:1 */
+  --danger-wash: #fbeeee;
+
+  /* ---------- 间距刻度 ----------
+     4px 基数。不要再随手写 7px / 13px —— 节奏就是这么乱掉的。 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* ---------- 字阶 ----------
+     每个值对应一个**角色**，不是"看着差不多"。
+     相邻两级至少差 1.25 倍，否则撑不起不同的职责。 */
+  --fs-meta:  12px;   /* 元信息：时间、来源名、计数 */
+  --fs-small: 13px;   /* 次要说明 */
+  --fs-body:  15px;   /* 界面正文 */
+  --fs-lead:  17px;   /* 答案正文——比界面正文大一档，因为它是"要读的东西" */
+  --fs-title: 20px;   /* 区块标题 */
+  --fs-brand: 22px;   /* 品牌字 */
+
+  /* ---------- 圆角 ---------- */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* ---------- 阴影 ----------
+     带偏移 + 柔化模糊。0 偏移的彩色光晕是装饰，不是深度。 */
+  --shadow-1: var(--shadow-1);
+  --shadow-2: 0 2px 4px rgba(26, 26, 24, .05), 0 10px 28px rgba(26, 26, 24, .08);
+
+  /* ---------- 字体 ---------- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+
+  /* ---------- 动效 ----------
+     一个节制的时刻，不是满屏乱动。
+     缓动用指数式 ease-out：起步快、收尾稳，比 cubic-bezier(.4,0,.2,1) 更像"实体"。 */
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --dur: 180ms;
+}
+
+/* 修正上面那行（CSS 变量不能自引用，这只是为了让 --shadow-1 有值） */
+:root { --shadow-1: 0 1px 2px rgba(26, 26, 24, .05); }
+
+/* ============================================================
+   全局基线
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+* { margin: 0; }
 
 html, body, #app { height: 100%; }
 
 body {
-  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-  color: #1f1f1f;
-  background: #f7f7f8;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ---------- 浏览器自带的表面，也要属于这套设计 ----------
+   选区、光标、滚动条、焦点环——这些"你没画过"的东西，
+   恰恰是「这一页是被人设计过的，不是拼出来的」最便宜的证据，
+   也是大多数生成式产物最稳定跳过的一环。 */
+::selection {
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+}
+
+html {
+  caret-color: var(--accent);
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+  border: 3px solid transparent;   /* 透明边框 = 给滚动条留白，比实心细条好看 */
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+  background-clip: content-box;
+}
+
+/* 键盘可达性：只在键盘操作时出现焦点环，鼠标点击不出现。
+   绝不写 outline:none —— 那等于把键盘用户拒之门外。 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* 尊重系统的"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ============================================================
+   .md —— markdown 渲染出的正文
+   ============================================================
+   放在全局（不放 scoped）的原因：markdown 是 v-html 注入的，
+   不受 scoped 的 data 属性约束。做成一个公共类，
+   比在每个组件里重复 :deep() 更干净，也能复用。 */
+
+.md { line-height: 1.75; }
+
+.md > * + * { margin-top: var(--sp-3); }
+
+.md h1, .md h2, .md h3, .md h4 {
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-top: var(--sp-5);   /* 标题上方的空白 > 下方：视觉上才归属下一段 */
+}
+.md h1 { font-size: var(--fs-title); }
+.md h2 { font-size: 17px; }
+.md h3, .md h4 { font-size: var(--fs-body); }
+
+.md p { max-width: 68ch; }   /* 正文舒适阅读宽度 45-75ch */
+
+.md ul, .md ol { padding-left: var(--sp-5); }
+.md li + li { margin-top: var(--sp-1); }
+
+.md a {
+  color: var(--accent);
+  text-underline-offset: 3px;         /* 下划线和字之间留口气 */
+  text-decoration-thickness: 1px;
+}
+.md a:hover { color: var(--accent-deep); }
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: .9em;
+  background: var(--surface-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  padding: 1px 5px;                   /* mono 只在"代码/数据"时出现，不当装饰 */
+}
+
+.md pre {
+  background: var(--surface-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  overflow-x: auto;
+}
+.md pre code { background: none; border: none; padding: 0; }
+
+.md blockquote {
+  border-left: 1px solid var(--rule-strong);   /* 恰好 1px（更粗就成装饰了）*/
+  padding-left: var(--sp-4);
+  color: var(--ink-muted);
+}
+
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;   /* 数字用等宽数位，列才对得齐 */
+}
+.md th, .md td {
+  border: 1px solid var(--rule);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+}
+.md th { background: var(--surface-sunk); font-weight: 600; }
+
+.md hr { border: none; border-top: 1px solid var(--rule); }
+
+.md img { max-width: 100%; border-radius: var(--r-sm); }
+
+/* ============================================================
+   以后想更进一步（留给以后，不是现在）
+   ------------------------------------------------------------
+   如果哪天想要一个"自己的展示体"，正确做法是：
+   自托管一个**只有英文子集**的展示字体（约 20-40 KB），
+   只用在品牌字和数字上；中文正文继续走系统字体。
+   千万不要整站套一套中文字体 —— 那是几 MB 的代价。
+   ============================================================ */
