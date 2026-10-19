@@ -1,0 +1,50 @@
+# ============================================================
+# Docker 构建上下文排除清单
+#
+# ⚠️ 这和 `.gitignore` **不是一回事**：
+#     `.gitignore` 管「不进 Git」，`.dockerignore` 管「不进镜像」。
+#     Dockerfile 里的 `COPY . .` 会把没排除的一切都打进去——
+#     包括 .env、隐私文件、AI 协作记录。
+#
+#     所以这里必须**独立地再列一遍**，不能假设「不在 Git 里 = 不在镜像里」。
+#     rsync 部署也踩过同样的坑（rsync 同样不看 .gitignore）。
+# ============================================================
+
+# ---------- 密钥（绝对不能进镜像）----------
+.env
+.env.*
+# 但示例文件要留，方便别人知道需要哪些变量
+!.env.example
+
+# ---------- 私人文件（不进镜像）----------
+# AI 协作约定与工具配置（impeccable skill 的 markdown，不是项目代码）
+.claude/
+CLAUDE.md
+# 面试进度 + 表达风格画像：不是站点运行所需，且属于个人隐私
+data/persona/
+
+# ---------- 版本控制 ----------
+.git/
+.github/
+
+# ---------- 运行时产物 ----------
+# 向量库可由 scripts/index_docs.py 重建
+chroma_db/
+data/*.db
+data/semantic_cache.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# ---------- Python 虚拟环境 ----------
+venv/
+.venv/
+
+# ---------- 前端依赖与构建产物 ----------
+# 依赖在构建阶段装，产物从构建阶段 COPY 过来
+frontend/node_modules/
+frontend/dist/
+
+# ---------- 测试不参与运行 ----------
+tests/

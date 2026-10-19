@@ -33,6 +33,32 @@ jobs:
   test:
     name: 测试
     runs-on: ubuntu-latest
+
+    # ★ 用真 MySQL 跑测试，而不是 SQLite。
+    #   线上是 MySQL 8，测试跑 SQLite 等于模拟错了对象——
+    #   长度校验、字符集/排序规则、caching_sha2_password 认证全都测不到。
+    #   这个项目已经吃过一次「CI 全绿但服务器装不上」的亏。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: about_me_agent_test
+          MYSQL_USER: aboutme
+          MYSQL_PASSWORD: aboutme
+        ports:
+          - 3306:3306
+        # 等 MySQL 真正就绪（健康检查），不靠 sleep 猜
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # conftest.py 读这个变量；没设时才回落到 SQLite
+      TEST_DATABASE_URL: mysql+pymysql://aboutme:aboutme@127.0.0.1:3306/about_me_agent_test?charset=utf8mb4
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -56,7 +82,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: 跑测试
-        # conftest.py 会把数据库指向 SQLite，所以这里不需要 MySQL 服务
+        # conftest.py 读 TEST_DATABASE_URL（上面 env 设的），连的是真 MySQL
         run: python -m pytest tests/ -v
 
   # ==========================================================
@@ -133,6 +159,7 @@ jobs:
           #
           #   注意：注释只能写在这条命令「前面」——反斜杠续行中间插注释会把命令截断。
           rsync -avz --delete \
+            --chown=aboutme:aboutme \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.claude' \
@@ -148,13 +175,13 @@ jobs:
             --exclude='frontend/node_modules' \
             --exclude='*.db' \
             --exclude='data/semantic_cache.json' \
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/root/About_Me_Agent/
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/aboutme/About_Me_Agent/
 
       - name: 装依赖并重启服务
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
             set -e
-            cd /root/About_Me_Agent
+            cd /home/aboutme/About_Me_Agent
             # 依赖有变化时补装（写进 requirements 的包必须在这一步落地，
             # 否则代码更新了、依赖没更新 → 上线就 ImportError）
             ./venv/bin/pip install -q -r requirements.txt

@@ -14,11 +14,17 @@ After=network.target
 
 
 [Service]
-WorkingDirectory=/root/About_Me_Agent
+# ★ 专用非 root 用户（2026-10-19 改造）。
+#   原来以 root 运行：RAG 链路任何文件读/代码执行被攻破，直接就是 root。
+#   现在只能碰 /home/aboutme/About_Me_Agent 下的东西。
+User=aboutme
+Group=aboutme
+
+WorkingDirectory=/home/aboutme/About_Me_Agent
 
 # ★ 只监听 127.0.0.1：外部一律走 Nginx（见 deploy/nginx/aboutme.conf）。
 #   这样 uvicorn 不直接暴露在公网，Nginx 是唯一入口。
-ExecStart=/root/About_Me_Agent/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000
+ExecStart=/home/aboutme/About_Me_Agent/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000
 
 # ★ 关掉 HuggingFace 的「联网检查」。
 #   加载模型时 sentence-transformers / FlagEmbedding 默认会去 HuggingFace
@@ -42,8 +48,7 @@ WantedBy=multi-user.target
 
 # ============================================================
 # 已知隐患（面试可讲，见 learn+/工程化改进待办.md 「四、安全」）
-#   · 现在是**以 root 跑**的——RAG 链路任何文件读/代码执行被攻破即直接拿 root。
-#     企业级做法：建专用用户，这里加一行 `User=www`（改动最小、收益最大）。
-#   · 密钥放在 /root/About_Me_Agent/.env 明文。企业级做法：进 GitHub Secrets /
+#   · ✅ 2026-10-19 已修：专用非 root 用户 `aboutme` 运行，目录迁到 /home/aboutme。
+#   · ⏳ 仍未做：.env 仍是磁盘明文。企业级做法：进 GitHub Secrets /
 #     密钥服务，部署时注入，磁盘上不留文件。
 # ============================================================

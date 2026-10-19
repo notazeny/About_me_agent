@@ -11,7 +11,19 @@ from pathlib import Path
 
 # ---- 1) 先设环境变量（必须早于任何 src / app 的 import）----
 _TEST_DB = Path(__file__).resolve().parent / "test_aboutme.db"
-os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"   # 走 SQLite，不连 MySQL
+
+# 默认 SQLite（本地跑得快），但 **CI 里必须指向 MySQL**（环境变量 `TEST_DATABASE_URL`）。
+#
+# 为什么 CI 不能再用 SQLite：线上是 MySQL 8，测试却跑 SQLite = 模拟错了对象——
+#   · SQLite 不校验 VARCHAR 长度，超长字段到线上才会炸
+#   · 字符集 / 排序规则不同（utf8mb4 vs UTF-8），中文比较结果可能不一致
+#   · `caching_sha2_password` 的认证/连接问题根本测不出来
+# 这个项目已经吃过一次「CI 全绿、服务器却装不上 SQLAlchemy」的亏（见 ci-cd.yml）。
+_TEST_DB_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    f"sqlite:///{_TEST_DB.as_posix()}",
+)
+os.environ["DATABASE_URL"] = _TEST_DB_URL
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-not-for-production"
 os.environ["DEEPSEEK_API_KEY"] = "test-dummy-key"                 # 测试不真调 LLM
 # client 夹具不用 `with TestClient(app)`，lifespan 本来就不跑；这里是双保险——
@@ -32,7 +44,9 @@ def _prepare_db():
     session_store.init_db()
     yield
     session_store.engine.dispose()
-    _TEST_DB.unlink(missing_ok=True)
+    # 只有 SQLite 才有「删文件」这回事；MySQL 的库由 CI 的 service 容器管
+    if _TEST_DB_URL.startswith("sqlite"):
+        _TEST_DB.unlink(missing_ok=True)
 
 
 @pytest.fixture(autouse=True)
