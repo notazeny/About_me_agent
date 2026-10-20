@@ -81,6 +81,12 @@ jobs:
         #   本机能跑 ≠ 能部署——少写一个包，这里立刻红。
         run: pip install -r requirements-dev.txt
 
+      - name: 静态检查（ruff）
+        # 放在测试之前：lint 是秒级的，先跑能最快失败、最快给反馈。
+        # 规则集见 pyproject.toml——刻意只开了 E/W/F/I/UP 五组，
+        # 开满会产生上百条存量噪声，最后一定被绕过去。
+        run: ruff check .
+
       - name: 跑测试
         # conftest.py 读 TEST_DATABASE_URL（上面 env 设的），连的是真 MySQL
         run: python -m pytest tests/ -v

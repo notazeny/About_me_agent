@@ -4,9 +4,8 @@ import time
 from . import config, semantic_cache
 from .bm25 import BM25, tokenize
 from .embedder import embed_query, get_model
-from .vector_store import count_docs, get_all_chunks, get_collection
 from .reranker import get_reranker, rerank
-
+from .vector_store import count_docs, get_all_chunks, get_collection
 
 # 模块级缓存：BM25 索引建一次复用，避免每次查询重建
 _chunks = None   # [{id, text, source}]

@@ -15,7 +15,6 @@ import pytest
 from src.generator import build_prompt, should_refuse
 from src.hybrid_retriever import weighted_rrf
 
-
 # ============================================================
 # weighted_rrf
 # ============================================================

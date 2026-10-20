@@ -1,0 +1,36 @@
+# ============================================================
+# ruff 配置
+#
+# 为什么只选这几组规则：
+#   本项目的目标是「CI 里有一道静态检查」，不是「把存量代码刷成教科书」。
+#   一次开满规则会产生上百条噪声，结果一定是被 ignore 掉或者被绕过——
+#   那还不如不开。先覆盖真正会抓 bug 的四类，其余等真的需要时再加。
+# ============================================================
+
+[tool.ruff]
+# 对齐服务器（Ubuntu 22.04 自带 Python 3.10），而不是开发机
+target-version = "py310"
+line-length = 100
+# 不扫虚拟环境 / 前端依赖 / 构建产物
+extend-exclude = ["venv", ".venv", "frontend/node_modules", "frontend/dist", "chroma_db"]
+
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle 错误（语法/缩进层面的）
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes：未使用的 import / 未定义变量 / 重复定义——真正抓 bug 的一组
+    "I",    # isort：import 排序，减少无意义的 diff 噪音
+    "UP",   # pyupgrade：过时写法（如 `Optional[X]` → `X | None`）
+]
+ignore = [
+    # 行宽交给人判断：中文注释按字符数算会大量误报，
+    # 且真正过长的行由格式化器处理更合适
+    "E501",
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+# conftest.py 必须「先设环境变量、再 import app」，
+# 所以 import 只能放在文件中部——这是有意为之，不是笔误
+"tests/conftest.py" = ["E402"]

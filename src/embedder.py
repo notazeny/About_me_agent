@@ -1,5 +1,6 @@
 """向量化：用本地 BGE 模型把文本转成向量。"""
 from sentence_transformers import SentenceTransformer
+
 from . import config
 
 _model = None

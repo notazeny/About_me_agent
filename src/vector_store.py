@@ -1,9 +1,11 @@
 """向量数据库：ChromaDB 持久化存储 + 增量同步。"""
 import logging
+
 import chromadb
+
 from . import config
-from .embedder import embed_texts
 from .document_loader import chunk_document
+from .embedder import embed_texts
 
 logger = logging.getLogger(__name__)
 

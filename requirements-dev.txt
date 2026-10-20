@@ -10,3 +10,8 @@ pytest==9.1.1
 
 # FastAPI TestClient 的底层 HTTP 客户端（必须显式装，starlette 不会自动带）
 httpx==0.28.1
+
+# 静态检查。钉死版本：规则集会随 ruff 版本变化，
+# 不钉的话某天 CI 会突然多出一堆新规则报错，但代码一行没改。
+# 规则选择见 pyproject.toml 的 [tool.ruff.lint]。
+ruff==0.17.1

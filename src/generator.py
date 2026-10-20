@@ -1,9 +1,11 @@
 """生成层：把检索到的片段拼成提示词，调用 DeepSeek 生成带出处的回答。"""
-import aiohttp
-import json
 import asyncio
+import json
 import queue
 import threading
+
+import aiohttp
+
 from . import config, persona
 
 
@@ -51,12 +53,14 @@ def should_refuse(chunks, threshold=config.RERANK_CONFIDENCE_THRESHOLD):
         return True
     # 取 chunks[0].get("score")；若是 None → return False（没有分数信息，交给提示词兜底）
     s=chunks[0].get("score")
-    if s != None:
+    # 必须是 `is not None`：`!= None` 在 Python 里调用的是 __eq__，
+    # 对 numpy / 自定义对象可能返回非布尔值甚至直接报错。
+    if s is not None:
         if s < threshold:    # score < threshold → return True，否则 return False
             return True
         return False
     return False
-    
+
 
 
 async def _produce(prompt:str, q):
@@ -65,7 +69,7 @@ async def _produce(prompt:str, q):
         q.put("[错误] 尚未配置 DeepSeek API Key，请把它填入 .env 文件或设置环境变量 DEEPSEEK_API_KEY。")
         q.put(None)
         return
-    
+
     url = f"{config.DEEPSEEK_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
@@ -80,7 +84,7 @@ async def _produce(prompt:str, q):
         "temperature": config.TEMPERATURE,
         "stream": True,
     }
-    
+
     timeout = aiohttp.ClientTimeout(total=config.REQUEST_TIMEOUT, connect=10)
     async with aiohttp.ClientSession() as s:
         try:
@@ -90,7 +94,7 @@ async def _produce(prompt:str, q):
                     q.put(f"[错误] DeepSeek 接口返回异常（状态码 {resp.status}）：{error_text[:200]}")
                     q.put(None)
                     return
-                
+
                 # 流式解析 SSE 数据
                 async for line in resp.content:
                     line = line.decode("utf-8").strip()
@@ -112,7 +116,7 @@ async def _produce(prompt:str, q):
                         q.put(delta)
                 q.put(None)
                 return
-                
+
         except aiohttp.ClientConnectorError:
             q.put("[错误] 无法连接 DeepSeek 服务器，请检查网络。")
             q.put(None)
@@ -126,7 +130,7 @@ async def _produce(prompt:str, q):
 
 def generate_answer_stream(prompt: str):
     """同步生成器：桥接异步流式，逐段 yield 给前端打字机。"""
-    q: "queue.Queue" = queue.Queue()
+    q: queue.Queue = queue.Queue()
 
     def runner():
         asyncio.run(_produce(prompt, q))   # 后台线程跑事件循环

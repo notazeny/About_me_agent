@@ -7,7 +7,20 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func, select, text
+from sqlalchemy import (
+    CHAR,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from . import config

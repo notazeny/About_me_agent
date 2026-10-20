@@ -1,7 +1,7 @@
 """Rerank 精排：用交叉编码器对候选片段重打分。"""
 from FlagEmbedding import FlagReranker
-from . import config
 
+from . import config
 
 _reranker = None
 
@@ -24,7 +24,7 @@ def rerank(query, candidates, top_k=config.TOP_K):
     # 防御性：如果候选为空，直接返回空列表
     if not candidates:
         return []
-    
+
     # 把 query 和每个候选的 text 拼成 pairs = [[query, c["text"]], ...]
     pairs = [[query, c["text"]] for c in candidates]
 

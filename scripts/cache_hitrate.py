@@ -39,8 +39,9 @@ os.environ["SEMANTIC_CACHE_PATH"] = str(_TMP_CACHE)
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-import numpy as np                      # noqa: E402
-from src.embedder import embed_query    # noqa: E402
+import numpy as np  # noqa: E402
+
+from src.embedder import embed_query  # noqa: E402
 
 
 def load_questions(path: Path) -> list[str]:

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.document_loader import read_documents
-from src.vector_store import sync_index, count_docs
+from src.vector_store import count_docs, sync_index
 
 
 def main():

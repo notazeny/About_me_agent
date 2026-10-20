@@ -6,7 +6,7 @@
 运行：
   locust -f locustfile_chat.py --headless -u 5 -r 5 -t 30s --host http://localhost:8000
 """
-from locust import HttpUser, task, constant
+from locust import HttpUser, constant, task
 
 
 class ChatUser(HttpUser):

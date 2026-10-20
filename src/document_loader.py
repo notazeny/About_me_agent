@@ -2,6 +2,7 @@
 import hashlib
 import logging
 from pathlib import Path
+
 from . import config
 
 logger = logging.getLogger(__name__)
@@ -98,14 +99,14 @@ def _recursive_split(text, separators, chunk_size):
     # 够短（len(text) <= chunk_size）就直接返回 [text]
     if len(text) <= chunk_size:
         return [text]
-    
+
     # 取最高优先级分隔符 sep = separators[0]
     sep = separators[0]
 
     # 若 sep == ""：没有分隔符可用，按 chunk_size 硬切返回
     if sep == "":
         return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-    
+
     # 否则按 sep 切开（text.split(sep)）
     pieces = text.split(sep)
     result = []

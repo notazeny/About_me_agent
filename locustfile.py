@@ -9,7 +9,7 @@
     -r 5    = 每秒启动 5 个
     -t 30s  = 跑 30 秒
 """
-from locust import HttpUser, task, constant
+from locust import HttpUser, constant, task
 
 
 class WebsiteUser(HttpUser):

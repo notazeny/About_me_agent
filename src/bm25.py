@@ -1,7 +1,9 @@
 """BM25 关键词检索：手写实现 + jieba 中文分词。"""
 import math
-import jieba
 from collections import Counter, defaultdict
+
+import jieba
+
 
 def tokenize(text: str) -> list[str]:
     """把句子切成词，过滤空白。"""
@@ -67,20 +69,20 @@ if __name__ == "__main__":
     docs = [["人工", "智能", "岗位"], ["前端", "面试", "岗位"]]
     bm25 = BM25(docs)
 
-    print("df:", bm25.df)           
+    print("df:", bm25.df)
     # {'人工': 1, '智能': 1, '岗位': 2, '前端': 1, '面试': 1}
 
-    print("doc_len:", bm25.doc_len)  
+    print("doc_len:", bm25.doc_len)
     # [3, 3]
 
-    print("avgdl:", bm25.avgdl)      
+    print("avgdl:", bm25.avgdl)
     # 3.0
 
-    print("doc_tf:", bm25.doc_tf)    
+    print("doc_tf:", bm25.doc_tf)
     # [Counter({'人工':1, '智能':1, '岗位':1}), Counter({'前端':1, '面试':1, '岗位':1})]
 
-    print(bm25.score(["岗位"]))      
+    print(bm25.score(["岗位"]))
     # 两个文档都有“岗位”，分数相近
 
-    print(bm25.score(["前端"]))      
+    print(bm25.score(["前端"]))
     # 只命中文档2，文档1为0

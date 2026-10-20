@@ -11,7 +11,6 @@
 不覆盖：RAG 检索质量（要加载 bge 模型，属于「质量回归」，
        该走单独的 nightly 流水线，见 learn+/工程化改进待办.md）。
 """
-import pytest
 
 PW = "pw123456"
 
