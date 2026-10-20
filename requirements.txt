@@ -28,12 +28,17 @@ bcrypt==5.0.0
 PyJWT==2.14.0
 
 # ---- RAG 检索 ----
-sentence-transformers==6.0.0
-FlagEmbedding==1.4.2
-chromadb==1.5.9
-jieba==0.42.1
-# 语义缓存直接用 numpy 做余弦相似度。chromadb 也会把它装进来，
-# 但我们是显式 import，就显式声明——不依赖「别人碰巧带进来」。
+# ⚠️ 重依赖（sentence-transformers / FlagEmbedding / chromadb / jieba）
+#    已经拆到 requirements-rag.txt。
+#    原因：它们会连锁拉进 torch（1.5-2GB），而接口测试根本用不到；
+#    代码侧也做了懒加载（见 app.py 顶部）。
+#
+#    ★ 部署 / 本地开发完整功能时要两份一起装：
+#        pip install -r requirements.txt -r requirements-rag.txt
+#      只装 requirements.txt 时，/healthz 的 vector_store 会是 false，
+#      chat 接口会直接报错——这是有意的：缺什么就明确说什么。
+#
+# 语义缓存直接用 numpy 做余弦相似度，所以它留在这里（轻量，语义缓存需要）。
 numpy>=1.26
 
 # ---- 文档解析 ----

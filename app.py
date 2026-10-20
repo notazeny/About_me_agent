@@ -18,9 +18,22 @@ from pydantic import BaseModel
 from src import auth, config, semantic_cache, session_store
 from src.errors import APIError, register_error_handlers
 from src.generator import build_prompt, generate_answer_stream, should_refuse
-from src.hybrid_retriever import retrieve_with_rerank, warm_state, warm_up
 from src.observability import AccessLogMiddleware, elapsed_ms, log_event
-from src.vector_store import count_docs
+
+# ★ 这里**故意不** import src.hybrid_retriever / src.vector_store。
+#
+#   这两个模块会连锁拉进 sentence-transformers / FlagEmbedding / chromadb / torch
+#   （装一次约 2 分钟、运行时几百 MB 内存），而 15 个接口冒烟测试
+#   （鉴权 / CRUD / 分页 / 错误码）**一个都用不到它们**。
+#
+#   原来它们在模块顶层 import，导致「只要 import app，就必须装全量重依赖」——
+#   CI 每次都为用不到的东西付两分钟。
+#
+#   改成懒加载后，import app 只带轻依赖；重依赖在三个真正需要的地方才加载：
+#     · lifespan（预热模型）
+#     · chat 接口（检索）
+#     · /healthz（探测向量库 / 预热状态）
+#   测试用 TestClient(app) 不触发 lifespan，所以整条重依赖链根本不会加载。
 
 # 故意复用 observability 的 logger：logging 按名字全局唯一，同名即同对象，
 # 于是这里打出的启动日志会直接用它的 JSON handler，不必再配一遍。
@@ -35,6 +48,9 @@ async def lifespan(_app: FastAPI):
     # 不做这一步，这 ~13 秒就落在「重启后的第一个访客」头上（叠加 rerank 共约 35 秒）。
     # 代价是启动变慢——这是**有意**的，理由见 src/hybrid_retriever.py 的 warm_up()。
     if config.WARMUP_ON_STARTUP:
+        # 懒加载：只有真的要预热时才拉起重依赖链（见文件顶部注释）
+        from src.hybrid_retriever import warm_up
+
         t = time.perf_counter()
         timings = warm_up()
         logger.info(json.dumps(
@@ -137,6 +153,11 @@ def delete_session(session_id: str, user: dict = Depends(auth.get_current_user))
 # ---------- 问答（SSE 流式） ----------
 @app.post("/sessions/{session_id}/chat", tags=["sessions"])
 def chat(session_id: str, body: ChatRequest, request: Request, user: dict = Depends(auth.get_current_user)):
+    # 懒加载重依赖：只有真的走到问答才需要检索链路（见文件顶部注释）。
+    # 每次请求都会执行到这里，但 import 命中 sys.modules 缓存，开销可忽略。
+    from src.hybrid_retriever import retrieve_with_rerank
+    from src.vector_store import count_docs
+
     if session_store.get_session(session_id, user["id"]) is None:
         raise APIError(40401, "会话不存在", 404)
     if not _check_rate(request.client.host):
@@ -225,6 +246,11 @@ def healthz(response: Response):
     checks = {"db": session_store.ping()}
 
     try:
+        # 懒加载重依赖（见文件顶部注释）：健康检查真的被调用时才需要 chromadb。
+        # import 也放进 try 里——这样「依赖没装」和「依赖装了但库是空的」
+        # 都会落到同一个分支，返回 503 而不是 500。
+        from src.vector_store import count_docs
+
         # 向量库非空才算健康：空的库虽然能启动，但一问就是"语料还没索引"
         checks["vector_store"] = count_docs() > 0
     except Exception:
@@ -235,6 +261,8 @@ def healthz(response: Response):
     # 正是「绿的但坏的」。
     # 只在开了预热时才检查：没开预热时模型是懒加载的，这里必然是 False，会误报 503。
     if config.WARMUP_ON_STARTUP:
+        from src.hybrid_retriever import warm_state
+
         checks.update(warm_state())
 
     healthy = all(checks.values())

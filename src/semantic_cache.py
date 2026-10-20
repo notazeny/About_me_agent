@@ -42,7 +42,25 @@ import threading
 import numpy as np
 
 from . import config
-from .embedder import embed_query
+
+# ★ 这里**不能**在顶层 `from .embedder import embed_query`。
+#   embedder 会连锁 import sentence-transformers → torch（几百 MB、几秒），
+#   而 app.py 在顶层 import 了本模块（为了 last_lookup）。
+#   结果就是「只要 import app 就得装 torch」——CI 为此白付两分钟。
+#   改成下面的模块级懒加载包装：真正调用时才 import 模型。
+
+
+def embed_query(text: str):
+    """懒加载入口：第一次调用时才 import 真正的 embedder。
+
+    为什么保留这个「同名包装」而不是在调用点写局部 import：
+    测试用 `monkeypatch.setattr(semantic_cache, "embed_query", fake)`
+    把模型换成查表。**模块级名字必须存在**，patch 才有目标；
+    写成函数内 import 的话，patch 会被局部 import 覆盖，测试直接失效。
+    """
+    from .embedder import embed_query as _real_embed_query
+
+    return _real_embed_query(text)
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +156,7 @@ def lookup(question: str) -> tuple[list[dict] | None, float]:
         _set_last(hit=False, score=0.0, reason="缓存为空")
         return None, 0.0
 
-    qvec = embed_query(question)          # 已归一化
+    qvec = embed_query(question)          # 已归一化（模块级懒加载包装）
 
     with _lock:
         matrix = _matrix()

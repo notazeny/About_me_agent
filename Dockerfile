@@ -51,7 +51,7 @@ RUN set -eux; \
     && rm -rf /var/lib/apt/lists/*
 
 # 依赖层单独一层：只改代码时不用重装 torch
-COPY requirements.txt ./
+COPY requirements.txt requirements-rag.txt ./
 
 # ★ 先装 CPU 版 torch，再装其余依赖。
 #   PyPI 上 Linux 的 torch 默认包是 CUDA 版，会连带拖进 nvidia-* 十几个包
@@ -84,7 +84,8 @@ RUN --mount=type=bind,source=docker/wheels,target=/wheels \
     pip install --no-cache-dir --find-links=/wheels "torch==2.14.1+cpu"
 
 # 主依赖走默认 PyPI（容器内实测 200；清华源在容器里是 403，见上）
-RUN pip install --no-cache-dir -r requirements.txt
+# 运行镜像必须装两份：rag 那份是 chat 接口要用的
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-rag.txt
 
 # 业务代码 + 语料
 COPY . .

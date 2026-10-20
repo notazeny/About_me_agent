@@ -39,7 +39,8 @@ HR 提问 → 前端 → FastAPI
 ## 运行
 
 ```bash
-pip install -r requirements.txt
+# 两份都要装：rag 那份是 chat 接口用的（约 1.5GB，torch 为主）
+pip install -r requirements.txt -r requirements-rag.txt
 cp .env.example .env                 # 填入 DEEPSEEK_API_KEY
 python scripts/index_docs.py         # 建库：语料 → 分块 → 向量
 python -m uvicorn app:app --reload   # 启动，浏览器开 http://127.0.0.1:8000

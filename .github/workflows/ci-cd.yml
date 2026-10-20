@@ -190,7 +190,9 @@ jobs:
             cd /home/aboutme/About_Me_Agent
             # 依赖有变化时补装（写进 requirements 的包必须在这一步落地，
             # 否则代码更新了、依赖没更新 → 上线就 ImportError）
-            ./venv/bin/pip install -q -r requirements.txt
+            # ★ 线上要装两份：chat 接口依赖 rag 那份（本地测试用不到，
+            #   所以 test job 只装 requirements-dev.txt）
+            ./venv/bin/pip install -q -r requirements.txt -r requirements-rag.txt
             # 改文件 ≠ 改运行中的服务：必须重启才生效
             systemctl restart about_me_agent
             # 顺带 reload Nginx：
