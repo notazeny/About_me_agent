@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.fusion import weighted_rrf
 from src.generator import build_prompt, should_refuse
-from src.hybrid_retriever import weighted_rrf
 
 # ============================================================
 # weighted_rrf

@@ -4,6 +4,10 @@ import time
 from . import config, semantic_cache
 from .bm25 import BM25, tokenize
 from .embedder import embed_query, get_model
+
+# weighted_rrf 住在 fusion.py（纯函数、零重依赖）。
+# 这里 re-export，是为了让老的 `from src.hybrid_retriever import weighted_rrf` 继续可用。
+from .fusion import weighted_rrf
 from .reranker import get_reranker, rerank
 from .vector_store import count_docs, get_all_chunks, get_collection
 
@@ -37,22 +41,6 @@ def bm25_search(query, top_n=config.HYBRID_RECALL_N):
     scores = bm25.score(tokenize(query))
     order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
     return [(chunks[i]["id"], scores[i]) for i in order[:top_n]]
-
-
-def weighted_rrf(vector_ranked, bm25_ranked, k=config.RRF_K, weights=config.HYBRID_WEIGHTS):
-    """加权 RRF 融合：两个 [(id, ...)] 列表（已按相关度降序）→ [(id, 融合分)] 降序。
-
-    公式：每个列表里，排名 rank（从 0 起）的文档累加 weight / (k + rank + 1)。
-    """
-    # 建 {id: 融合分} 字典，遍历两个列表累加
-    # 提示：enumerate 得到 rank，第一名用 k + 1（即 k + rank + 1）
-    # 最后 sorted(...) 按分数降序返回
-    scores = {}
-    for lst, w in [(vector_ranked, weights[0]), (bm25_ranked, weights[1])]:
-        for rank, (doc_id, _) in enumerate(lst):
-            scores[doc_id] = scores.get(doc_id, 0.0) + w / (k + rank + 1)
-    # 按融合分降序返回列表
-    return sorted(scores.items(), key=lambda item: item[1], reverse=True)
 
 
 def hybrid_retrieve(query, top_k=config.TOP_K):

@@ -6,7 +6,13 @@ CI 里不会因为下模型而变慢。
 import numpy as np
 import pytest
 
-from src import config, hybrid_retriever, semantic_cache
+from src import config, semantic_cache
+
+# ⚠️ 不要在这里顶层 import hybrid_retriever：
+#    它会连锁拉进 sentence-transformers / chromadb / torch（1.5GB）。
+#    CI 的 test job 只装轻依赖（见 requirements-rag.txt 的说明），
+#    顶层 import 会让整个文件在 CI 里 ImportError。
+#    两个真正需要它的用例在函数内用 pytest.importorskip 按需加载。
 
 
 @pytest.fixture(autouse=True)
@@ -70,6 +76,7 @@ def test_dissimilar_question_misses(monkeypatch):
 
 def test_hit_skips_rerank(monkeypatch):
     """命中缓存时，粗召和 rerank 都不该被调用——这才是「省掉 19.6 秒」的证据。"""
+    hybrid_retriever = pytest.importorskip("src.hybrid_retriever", reason="需要 rag 依赖")
     _install_embedder(monkeypatch, {"介绍一下你自己": [1.0, 0.0]})
     semantic_cache.store("介绍一下你自己", CHUNKS)
 
@@ -84,6 +91,7 @@ def test_hit_skips_rerank(monkeypatch):
 
 def test_miss_runs_full_path_and_populates_cache(monkeypatch):
     """未命中时走完整链路，并把结果写进缓存（下一次就该命中了）。"""
+    hybrid_retriever = pytest.importorskip("src.hybrid_retriever", reason="需要 rag 依赖")
     _install_embedder(monkeypatch, {"全新的问题": [1.0, 0.0]})
     monkeypatch.setattr(hybrid_retriever, "hybrid_retrieve",
                         lambda q, top_k: [{"text": "候选", "source": "s"}])
