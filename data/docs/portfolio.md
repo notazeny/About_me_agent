@@ -39,7 +39,7 @@
 问求职方向。回答基于真实语料，附引用出处，还能点开源文本核对。
 
 **技术栈**：FastAPI + Vue3 + TypeScript + MySQL + SQLAlchemy + ChromaDB + BAAI-BGE +
-DeepSeek + Nginx + systemd + GitHub Actions
+DeepSeek + Nginx + systemd（非 root）+ Docker + GitHub Actions + ruff
 
 **关键设计（都能讲清为什么）**：
 
@@ -51,6 +51,11 @@ DeepSeek + Nginx + systemd + GitHub Actions
   实测那笔「冷启动 13 秒」有 11 秒是等 HuggingFace 联网检查，纯加载只要 2.5 秒。
 - **线上性能**：首字延迟 **34.7s → 25.2s**，重复问题 **~1.4s**（语义缓存命中）。
 - **可观测**：请求 ID + 结构化日志 + chat 分段打点（retrieve / first_token / gen / total）。
+- **工程化（2026-10-20 收尾）**：服务从 root 改为专用用户 `aboutme`（迁移时模型缓存
+  留在 `/root/.cache` 导致加载失败——**root 能跑不是因为配置对，是因为特权掩盖了配置错误**）；
+  CI 起真 MySQL service 跑测试而非 SQLite，并用「故意指向坏 MySQL 必须变红」做反证；
+  新增多阶段 Dockerfile + compose（app + MySQL）本地验证通过；
+  ruff 进 CI；重依赖懒加载让 `import app` 从 **6.0s 降到 0.6s**，CI 装依赖 **2 分钟 → 16 秒**。
 
 **回答的问题**：「你能把 AI 应用真的部署上线吗？」——能，现在就能打开验证。
 
@@ -103,7 +108,8 @@ LLM-as-Judge 评测、手写 trace 可观测、Docker + Redis 部署。
 - **安全与可观测**：提示词注入护栏（直接 / 间接）、工具沙箱白名单、HITL、
   手写 trace、LLM-as-Judge 评测
 - **工程**：asyncio、SSE 流式、FastAPI、MySQL、Redis、Docker、Nginx、
-  GitHub Actions、pytest（各项目核心链路均覆盖单测）
+  GitHub Actions（lint → test(真 MySQL) → 构建 → 部署 → 健康检查）、
+  ruff 静态检查、pytest（各项目核心链路均覆盖单测）
 
 ## 关于我
 
